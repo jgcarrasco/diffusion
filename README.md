@@ -1,8 +1,9 @@
-# ddim
-Implementation and experiments with Denoising Diffusion Implicit Models (DDIM)
+# Diffusion Probabilistic Models
+Implementation and experiments with Diffusion Probabilistic Models
 
 ## TO DO
-- [ ] Implementing DDIM (faster inference)
+- [ ] Implementing original DPM (http://arxiv.org/abs/1503.03585)
+  
 
 ## Background
 

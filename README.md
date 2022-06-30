@@ -14,5 +14,7 @@ Given a data distribution $x_o \sim q(x_0)$, we define a **forward process** whi
 
 Therefore, if we had the exact reverse distribution, $q(x_{t-1}|x_t)$ we could be able to sample $x_T \sim \mathcal{N}(0, \mathbb{I})$ and run the process in reverse to get a sample from the original distribution. However, this reverse process depends on the original distribution, to it is untractable, so we approximate it using a neural network.
 
+![Representation of the forward and generation processes in a DDPM](/imgs/ddpm.PNG)
+
 #### DDIM
 

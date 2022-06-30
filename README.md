@@ -7,6 +7,10 @@ Implementation and experiments with Diffusion Probabilistic Models
 
 ## Background
 
+### DPM
+
+![DPM](imgs/DPM.PNG)
+
 ### DDPM
 
 The idea behind Denoising Diffusion Probabilistic Models (DDPM) is to learn to generate images from noise by iteratively denoising the image.

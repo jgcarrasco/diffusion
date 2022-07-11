@@ -32,6 +32,11 @@ def extract(a, t, x_shape):
     out = a.gather(-1, t.cpu())
     return out.reshape(batch_size, *((1,) * (len(x_shape) - 1))).to(t.device)
 
+def extract2(a, t, x_shape):
+    out = torch.gather(a, 0, t.to(a.device))
+    reshape = [t.shape[0]] + [1] * (len(x_shape) - 1)
+    return out.reshape(*reshape)
+
 def schedule_variances(beta_1=1e-4, beta_T = 1e-1, T=100, mode='sigmoid'):
     """
     Schedule the variances used in the forward diffusion step.
@@ -60,12 +65,28 @@ def schedule_variances(beta_1=1e-4, beta_T = 1e-1, T=100, mode='sigmoid'):
 
 # TESTING CODE
 if __name__ == "__main__":
+    print("FIRST TEST")
+    print("")
     x_0 = torch.randn((10, 2))
     a = torch.tensor([0, 1])
     t = torch.randint(0, 2, size=(10,))
     out = extract(a, t, x_0.shape)
+    out2 = extract2(a, t, x_0.shape)
+    print("x_0: ", x_0.shape)
+    print("a: ", a.shape)
+    print("t: ", t.shape)
+    print("out: ", out.shape)
+    print("out2: ", out2.shape)
+    print("SECOND TEST")
+    print("")
+    x_0 = torch.randn((10, 2))
+    a = torch.tensor([0, 42])
+    t = torch.tensor([1])
+    out = extract(a, t, x_0.shape)
+    out2 = extract2(a, t, x_0.shape)
     print("x_0: ", x_0.shape)
     print("a: ", a.shape)
     print("t: ", t.shape)
     print("out: ", out.shape) 
+    print("out2: ", out2.shape)
     print(out)

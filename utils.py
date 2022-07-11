@@ -23,14 +23,16 @@ def extract(a, t, x_shape):
     t is a tensor of size (n_samples,)
     x_shape is (n_samples, *)
 
-    This function returns an (n_samples,) which contains the values of 
-    a indexed by t.
+    This function returns an (n_samples, *) which contains the values of 
+    a indexed by t, broadcasted to the format of x_shape. In other words,
+    this function is used to be able to select different betas for separate
+    timesteps in a parallel fashion, in order to use batches for training.
     """
     batch_size = t.shape[0]
     out = a.gather(-1, t.cpu())
     return out.reshape(batch_size, *((1,) * (len(x_shape) - 1))).to(t.device)
 
-def schedule_variances(beta_1=1e-4, beta_T = 0.02, T=1000, mode='linear'):
+def schedule_variances(beta_1=1e-4, beta_T = 1e-1, T=100, mode='sigmoid'):
     """
     Schedule the variances used in the forward diffusion step.
 

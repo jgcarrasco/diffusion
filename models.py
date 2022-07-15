@@ -103,12 +103,35 @@ class Diffusion(nn.Module):
         x_tm1 = a*(x_t - b*z_pred) + sigma*z
         return x_tm1 
 
-    def generate(self, n_samples=100):   
-        x_t = torch.randn((n_samples, 2))
+    def generate(self, n_samples=100, return_all=False):
+        """
+        Generate samples via the learned reverse diffusion process.
+
+        Parameters
+        ----------
+        n_samples: int
+            Number of samples to be synthetised
+        return_all: bool
+            If true, returns the partial results at each timestep, else, it 
+            just returns the final result.
+        
+        Returns
+        -------
+        If `return_all=True` returns a (N, T, D) tensor, where N is the number
+        of samples, T is the total timesteps, and D is the dimension of the 
+        sample.
+        If `return_all=False`, returns a (N, D) tensor, containing the results
+        after performing the whole reverse process.
+        """  
+        x_t = torch.randn((n_samples, 2)).cuda()
+        if return_all:
+            X_t = [torch.unsqueeze(x_t, dim=1)]
         for t in reversed(range(self.timesteps)):
-            t = torch.tensor([t])
+            t = torch.tensor([t]).cuda()
             x_t = self.sample_p(x_t, t)
-        return x_t 
+            if return_all:
+                X_t.append(torch.unsqueeze(x_t, dim=1))
+        return torch.cat(X_t, dim=1) if return_all else x_t 
 
     def compute_loss(self, x_0, t):
         z = torch.randn_like(x_0)
@@ -143,6 +166,39 @@ class Diffusion(nn.Module):
                 axes[i].set_title("t = " + str(t[0].item()+1))
                 i -= 1
         return fig   
+
+
+class EMA(object):
+    def __init__(self, mu=0.999):
+        self.mu = mu
+        self.shadow = {}
+
+    def register(self, module):
+        for name, param in module.named_parameters():
+            if param.requires_grad:
+                self.shadow[name] = param.data.clone()
+
+    def update(self, module):
+        for name, param in module.named_parameters():
+            if param.requires_grad:
+                self.shadow[name].data = (1. - self.mu) * param.data + self.mu * self.shadow[name].data
+
+    def ema(self, module):
+        for name, param in module.named_parameters():
+            if param.requires_grad:
+                param.data.copy_(self.shadow[name].data)
+
+    def ema_copy(self, module):
+        module_copy = type(module)(module.config).to(module.config.device)
+        module_copy.load_state_dict(module.state_dict())
+        self.ema(module_copy)
+        return module_copy
+
+    def state_dict(self):
+        return self.shadow
+
+    def load_state_dict(self, state_dict):
+        self.shadow = state_dict
 
 # Testing code
 if __name__ == "__main__":

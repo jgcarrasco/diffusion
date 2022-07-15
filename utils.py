@@ -37,7 +37,7 @@ def extract2(a, t, x_shape):
     reshape = [t.shape[0]] + [1] * (len(x_shape) - 1)
     return out.reshape(*reshape)
 
-def schedule_variances(beta_1=1e-4, beta_T = 1e-1, T=100, mode='sigmoid'):
+def schedule_variances(beta_1=1e-5, beta_T = 1e-2, T=1000, mode='sigmoid'):
     """
     Schedule the variances used in the forward diffusion step.
 
@@ -52,16 +52,30 @@ def schedule_variances(beta_1=1e-4, beta_T = 1e-1, T=100, mode='sigmoid'):
     All will be arrays of shape (T, )
     """
     if mode == 'linear':
-        betas = np.linspace(beta_1, beta_T, T)
+        betas = torch.linspace(beta_1, beta_T, T)
     elif mode == 'sigmoid':
-        betas = np.linspace(-6, 6, T)
-        betas = 1/(1 + np.exp(-betas)) * (beta_T - beta_1) + beta_1
+        betas = torch.linspace(-6, 6, T)
+        betas = torch.sigmoid(betas) * (beta_T - beta_1) + beta_1
     elif mode == 'fixed':
-        betas = np.array([1./(T-t+1) for t in range(1, T+1)])
+        betas = torch.tensor([1./(T-t+1) for t in range(1, T+1)])
     else:
         raise Exception("Invalid mode!")
-    return torch.tensor(betas, dtype=torch.float32)
+    return betas
 
+def plot_trajectory(x, y):
+    u = np.diff(x)
+    v = np.diff(y)
+    pos_x = x[:-1] + u/2
+    pos_y = y[:-1] + v/2
+    norm = np.sqrt(u**2+v**2) 
+
+    fig, ax = plt.subplots(figsize=(1.6*8, 8))
+    ax.scatter(x[0], y[0], marker="o", color='red', s=100, zorder=3, label="Start")
+    ax.scatter(x[-1], y[-1], marker="o", color='yellow', s=100, zorder=3, label="End")
+    ax.plot(x,y, marker="o", zorder=1)
+    ax.quiver(pos_x, pos_y, u/norm, v/norm, angles="xy", zorder=2, pivot="mid")
+    ax.legend()
+    return ax
 
 # TESTING CODE
 if __name__ == "__main__":

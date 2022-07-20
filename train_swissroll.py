@@ -11,7 +11,7 @@ from models import *
 # Parameters
 timesteps = 100
 n_epochs = 2000
-batch_size = 128
+batch_size = 1000
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Load the data
@@ -19,11 +19,8 @@ X_0 = torch.tensor(make_dataset(n_samples=1000), dtype=torch.float32).to(device)
 # Instantiate diffusion model
 #model = SwissRollModel(timesteps=timesteps)
 model = ConditionalModel(n_steps=timesteps)
-diffusion = Diffusion(model, timesteps=100, beta_1=1e-5, beta_T=1e-2).to(device)
+diffusion = Diffusion(model, timesteps=100, beta_1=1e-4, beta_T=1e-1).to(device)
 opt = torch.optim.Adam(diffusion.parameters(), lr=1e-3)
-# Create EMA model
-ema = EMA(0.9)
-ema.register(diffusion)
 
 L = []
 X_seq = []
@@ -43,8 +40,6 @@ for epoch in tqdm(range(n_epochs)):
         # Perform gradient clipping
         torch.nn.utils.clip_grad_norm_(diffusion.parameters(), 1.)
         opt.step()
-        # Update the exponential moving average
-        ema.update(diffusion)
     # Print loss
     if (epoch % 200 == 0):
         print(loss)
@@ -54,10 +49,12 @@ for epoch in tqdm(range(n_epochs)):
         # plt.show()
     L.append(loss.item())
 
+plt.plot(L)
+plt.show()
+
 X_seq = torch.cat(X_seq)
 fig = plot_summary(X_seq)
 plt.show()
 
 # Save the model for inference
-ema.ema(diffusion)
 torch.save(diffusion, os.path.join("saved_models", "test.pth"))

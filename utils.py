@@ -15,7 +15,14 @@ def make_dataset(n_samples=300, noise=0.3):
     # Normalize the data so it lies between [-1 and 1]
     #max_value = np.max(points)
     max_value = 10.0
-    return points/max_value
+    
+    hline = np.random.uniform(low=[0., -0.01], high=[1., 0.01], 
+                               size=(int(n_samples/2), 2))
+    vline = np.random.uniform(low=[0.01, 0.], high=[0.01, 1.], 
+                               size=(int(n_samples/2), 2))
+    points = np.concatenate([hline, vline])
+
+    return points
 
 def extract(a, t, x_shape):
     """
@@ -100,7 +107,7 @@ def plot_summary(x_seq, n_snapshots=10):
         x_seq = x_seq.cpu().detach().numpy()
 
         fig, axes = plt.subplots(nrows=epochs, ncols=n_snapshots, 
-                                figsize=(n_snapshots*3, epochs*3))
+                                figsize=(n_snapshots*1.5, epochs*1.5))
         ts = np.linspace(0, timesteps, n_snapshots, dtype=int)
         for epoch in range(epochs):
             for t, ax in zip(ts, axes[epoch]):

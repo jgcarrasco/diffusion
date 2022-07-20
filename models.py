@@ -148,6 +148,8 @@ class Diffusion(nn.Module):
 
     def plot_reverse_process(self, n_samples=1000, n_snapshots=10):
         
+        device = next(self.model.parameters()).device
+
         fig, axes = plt.subplots(ncols=n_snapshots, figsize=(3*n_snapshots, 3))
 
         # list of timesteps where a plot will be shown
@@ -157,16 +159,16 @@ class Diffusion(nn.Module):
         x_t = torch.randn((n_samples, 2))
         # Plot the first sample
         i = n_snapshots - 1
-        x_t_cpu = x_t.detach().numpy()
+        x_t_cpu = x_t.cpu().detach().numpy()
         axes[i].scatter(x_t_cpu[:, 0], x_t_cpu[:, 1])
         axes[i].set_title("t = " + str(self.timesteps))
         i -= 1
         for t in reversed(range(self.timesteps)):
             t = torch.tensor([t])
-            x_t = self.sample_p(x_t, t)
+            x_t = self.sample_p(x_t.to(device), t.to(device))
             if torch.isin(t[0], t_snapshots):
                 # Plot the sample
-                x_t_cpu = x_t.detach().numpy()
+                x_t_cpu = x_t.cpu().detach().numpy()
                 axes[i].scatter(x_t_cpu[:, 0], x_t_cpu[:, 1])
                 axes[i].set_title("t = " + str(t[0].item()+1))
                 i -= 1
@@ -207,8 +209,13 @@ class EMA(object):
 
 # Testing code
 if __name__ == "__main__":
-    simple_model = SwissRollModel()
-    input_test = torch.rand((2, 2))
-    t = torch.tensor([10, 20])
-    print("Input shape: ", input_test.size())
-    print("Output shape at t = 10", simple_model(input_test, t).size())
+    # simple_model = SwissRollModel()
+    # input_test = torch.rand((2, 2))
+    # t = torch.tensor([10, 20])
+    # print("Input shape: ", input_test.size())
+    # print("Output shape at t = 10", simple_model(input_test, t).size())
+    # Checking how the embedding works
+    cond_layer = ConditionalLinear(2, 1, 2)
+    x_t = torch.randn((1, 2))
+    t = torch.tensor([1])
+    cond_layer(x_t, t)

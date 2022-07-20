@@ -62,6 +62,55 @@ def schedule_variances(beta_1=1e-5, beta_T = 1e-2, T=1000, mode='sigmoid'):
         raise Exception("Invalid mode!")
     return betas
 
+def plot_summary(x_seq, n_snapshots=10):
+    """
+    Plots a summary of the learned reverse process.
+
+    Parameters
+    ----------
+    x_seq : `torch.Tensor`
+        Tensor of shape (N, T, D), where N is the number of samples, T is 
+        the total number of timesteps and D is the input shape or tensor of
+        shape (E, N, T, D), where the extra dimension E contains information
+        about different stages of training.
+    
+    Returns
+    -------
+    `n_snapshots` plots containing samples drawn at different steps of the 
+    learned reverse process. If x_seq is of dimension (E, N, T, D), plots the 
+    same, but at different stages of training.
+    """
+    assert len(x_seq.size()) == 3 or len(x_seq.size()) == 4, \
+        "x_seq must be of shape (N, T, D) or (E, N, T, D)"
+    if len(x_seq.size()) == 3:
+        timesteps = x_seq.size()[1] - 1
+        x_seq = x_seq.cpu().detach().numpy()
+
+        fig, axes = plt.subplots(ncols=n_snapshots, figsize=(28, 3))
+        ts = np.linspace(0, timesteps, n_snapshots, dtype=int)
+
+        for t, ax in zip(ts, axes):
+            ax.scatter(x_seq[:, t, 0], x_seq[:, t, 1], alpha=0.5, color='C0', 
+                    edgecolor='white', s=40)
+            ax.set_title("t = " + str(t))
+            ax.set_aspect("equal")
+    else:
+        epochs = x_seq.size()[0]
+        timesteps = x_seq.size()[2] - 1
+        x_seq = x_seq.cpu().detach().numpy()
+
+        fig, axes = plt.subplots(nrows=epochs, ncols=n_snapshots, 
+                                figsize=(n_snapshots*3, epochs*3))
+        ts = np.linspace(0, timesteps, n_snapshots, dtype=int)
+        for epoch in range(epochs):
+            for t, ax in zip(ts, axes[epoch]):
+                ax.scatter(x_seq[epoch, :, t, 0], x_seq[epoch, :, t, 1], 
+                           alpha=0.5, color='C0', edgecolor='white', s=40)
+                ax.set_title("t = " + str(t))
+                ax.set_aspect("equal")
+    fig.tight_layout()
+    return fig
+
 def plot_trajectory(x, y):
     u = np.diff(x)
     v = np.diff(y)

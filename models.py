@@ -119,19 +119,24 @@ class Diffusion(nn.Module):
         -------
         If `return_all=True` returns a (N, T, D) tensor, where N is the number
         of samples, T is the total timesteps, and D is the dimension of the 
-        sample.
+        sample. The samples are ordered in terms of the timestep, i.e. the 
+        sample at index 0 will be the one obtained after performing the whole
+        learned reverse process (t=0) and the one at the end will be the points
+        sampled from the normal distribution (t = `self.timesteps`).
+
         If `return_all=False`, returns a (N, D) tensor, containing the results
         after performing the whole reverse process.
         """  
-        x_t = torch.randn((n_samples, 2)).cuda()
+        device = next(self.model.parameters()).device
+        x_t = torch.randn((n_samples, 2)).to(device)
         if return_all:
             X_t = [torch.unsqueeze(x_t, dim=1)]
         for t in reversed(range(self.timesteps)):
-            t = torch.tensor([t]).cuda()
+            t = torch.tensor([t]).to(device)
             x_t = self.sample_p(x_t, t)
             if return_all:
                 X_t.append(torch.unsqueeze(x_t, dim=1))
-        return torch.cat(X_t, dim=1) if return_all else x_t 
+        return torch.cat(list(reversed(X_t)), dim=1) if return_all else x_t 
 
     def compute_loss(self, x_0, t):
         z = torch.randn_like(x_0)

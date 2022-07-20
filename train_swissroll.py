@@ -26,6 +26,7 @@ ema = EMA(0.9)
 ema.register(diffusion)
 
 L = []
+X_seq = []
 
 for epoch in tqdm(range(n_epochs)):
     idxs = torch.randperm(X_0.size()[0])
@@ -48,12 +49,15 @@ for epoch in tqdm(range(n_epochs)):
     if (epoch % 200 == 0):
         print(loss)
         x_seq = diffusion.generate(n_samples=1000, return_all=True)
-        
+        X_seq.append(torch.unsqueeze(x_seq, dim=0))
+        # fig = plot_summary(x_seq)
+        # plt.show()
     L.append(loss.item())
-    
-#plt.plot(L)
+
+X_seq = torch.cat(X_seq)
+fig = plot_summary(X_seq)
 plt.show()
 
 # Save the model for inference
 ema.ema(diffusion)
-torch.save(diffusion.state_dict(), os.path.join("saved_models", "test.pth"))
+torch.save(diffusion, os.path.join("saved_models", "test.pth"))

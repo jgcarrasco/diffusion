@@ -63,7 +63,7 @@ class Diffusion(nn.Module):
         super(Diffusion, self).__init__()
         # Precompute the betas, alphas and useful values that will be used
         self.betas = schedule_variances(beta_1=beta_1, beta_T=beta_T, 
-                                        T=timesteps, mode='sigmoid')
+                                        T=timesteps, mode='cosine')
         self.alphas = 1 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, -1)
         self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)

@@ -19,13 +19,14 @@ X_0 = torch.tensor(make_dataset(n_samples=1000), dtype=torch.float32).to(device)
 # Instantiate diffusion model
 #model = SwissRollModel(timesteps=timesteps)
 model = ConditionalModel(n_steps=timesteps)
-diffusion = Diffusion(model, timesteps=100, beta_1=1e-4, beta_T=1e-1).to(device)
+diffusion = Diffusion(model, timesteps=timesteps, beta_1=1e-4, beta_T=1e-2).to(device)
 opt = torch.optim.Adam(diffusion.parameters(), lr=1e-3)
 
 L = []
 X_seq = []
 
 for epoch in tqdm(range(n_epochs)):
+    X_0 = torch.tensor(make_dataset(n_samples=1000), dtype=torch.float32).to(device)
     idxs = torch.randperm(X_0.size()[0])
     for i in range(0, X_0.size()[0], batch_size):
         idx = idxs[i:i+batch_size]
@@ -52,9 +53,9 @@ for epoch in tqdm(range(n_epochs)):
 plt.plot(L)
 plt.show()
 
-X_seq = torch.cat(X_seq)
-fig = plot_summary(X_seq)
-plt.show()
+# X_seq = torch.cat(X_seq)
+# fig = plot_summary(X_seq)
+# plt.show()
 
 # Save the model for inference
 torch.save(diffusion, os.path.join("saved_models", "test.pth"))

@@ -16,11 +16,12 @@ def make_dataset(n_samples=300, noise=0.3):
     #max_value = np.max(points)
     max_value = 10.0
     
-    hline = np.random.uniform(low=[0., -0.01], high=[1., 0.01], 
-                               size=(int(n_samples/2), 2))
-    vline = np.random.uniform(low=[0.01, 0.], high=[0.01, 1.], 
-                               size=(int(n_samples/2), 2))
-    points = np.concatenate([hline, vline])
+    r = 0.5*np.ones(n_samples) + 0.05*np.random.normal(size=n_samples)
+    thetas = 2*np.pi*np.random.rand(n_samples)
+    x = r * np.cos(thetas)
+    y = r * np.sin(thetas)
+    points = np.stack([x, y], axis=1)
+    #points = np.zeros((n_samples, 2))
 
     return points
 
@@ -44,7 +45,7 @@ def extract2(a, t, x_shape):
     reshape = [t.shape[0]] + [1] * (len(x_shape) - 1)
     return out.reshape(*reshape)
 
-def schedule_variances(beta_1=1e-5, beta_T = 1e-2, T=1000, mode='sigmoid'):
+def schedule_variances(beta_1=1e-5, beta_T = 1e-2, T=1000, mode='cosine'):
     """
     Schedule the variances used in the forward diffusion step.
 
@@ -65,6 +66,14 @@ def schedule_variances(beta_1=1e-5, beta_T = 1e-2, T=1000, mode='sigmoid'):
         betas = torch.sigmoid(betas) * (beta_T - beta_1) + beta_1
     elif mode == 'fixed':
         betas = torch.tensor([1./(T-t+1) for t in range(1, T+1)])
+    elif mode == 'cosine':
+        s = 0.0008
+        f = lambda t : np.cos((t/T + s) / (1 + s)*np.pi/2.)**2
+        a_bar = np.arange(T, dtype=float)
+        a_bar = f(a_bar)/f(0.)
+        betas = 1 - a_bar/(np.concatenate([[1], a_bar[:-1]]))
+        betas = torch.tensor(betas, dtype=torch.float32)
+        betas = torch.clamp(betas, max=0.999)
     else:
         raise Exception("Invalid mode!")
     return betas
@@ -135,28 +144,4 @@ def plot_trajectory(x, y):
 
 # TESTING CODE
 if __name__ == "__main__":
-    print("FIRST TEST")
-    print("")
-    x_0 = torch.randn((10, 2))
-    a = torch.tensor([0, 1])
-    t = torch.randint(0, 2, size=(10,))
-    out = extract(a, t, x_0.shape)
-    out2 = extract2(a, t, x_0.shape)
-    print("x_0: ", x_0.shape)
-    print("a: ", a.shape)
-    print("t: ", t.shape)
-    print("out: ", out.shape)
-    print("out2: ", out2.shape)
-    print("SECOND TEST")
-    print("")
-    x_0 = torch.randn((10, 2))
-    a = torch.tensor([0, 42])
-    t = torch.tensor([1])
-    out = extract(a, t, x_0.shape)
-    out2 = extract2(a, t, x_0.shape)
-    print("x_0: ", x_0.shape)
-    print("a: ", a.shape)
-    print("t: ", t.shape)
-    print("out: ", out.shape) 
-    print("out2: ", out2.shape)
-    print(out)
+    schedule_variances(mode='cosine')

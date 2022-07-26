@@ -59,24 +59,76 @@ class Diffusion:
         self.betas = utils.schedule_variances(timesteps=timesteps)
         self.alphas = 1 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, -1)
+        self.alphas_cumprod_prev = torch.cat(
+            [torch.tensor([1]).float(), 
+             self.alphas_cumprod[:-1]], 0)
+        self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
+        self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1 - self.alphas_cumprod)
 
         self.timesteps = timesteps
         if model:
             self.model = model
         else:
             self.model = ConditionalModel(n_steps=timesteps)
+    
+    def sample_forward(self, x_0, t):
+        """
+        Implementation of the forward diffusion process from x_0 to x_t at 
+        timestep t, q(x_t | x_0)
 
+        Parameters
+        ----------
+        x_0 : `torch.Tensor`
+            Tensor of shape (n_batch, 2), containing samples drawn from the
+            original distribution.
+        t : `torch.Tensor`
+            Tensor of shape (n_batch, ), indicating from which timestep we
+            want to sample, for every observation.
+
+        Returns
+        -------
+        `torch.Tensor` of shape (n_batch, 2) containing the results of the 
+        forward diffusion process.
+        """
+        z = torch.randn_like(x_0)
+        return x_0 * self.sqrt_alphas_cumprod[t].unsqueeze(1) \
+             + z * self.sqrt_one_minus_alphas_cumprod[t].unsqueeze(1)
+
+    def compute_mu_posterior(self, x_0, x_t, t):
+        """
+        Compute the mean of the gaussian q(x_t-1 | x_t, x_0). This will be used
+        when computing the loss.
+        """
+        pass
+            
+    #---------------
+    # VISUALIZATION
+    #---------------
+    
+    def plot_forward(self, x_0):
+        """
+        Plots the distribution at timesteps 0, T/2 and T, where T is the total
+        number of timesteps.
+        """
+
+        x_Td2 = self.sample_forward(x_0, 
+                                    torch.tensor([int((self.timesteps-1)/2)]))
+        x_T = self.sample_forward(x_0, 
+                                  torch.tensor([int(self.timesteps-1)]))
+
+        fig, (ax1, ax2, ax3) = plt.subplots(ncols=3, figsize=(3*3, 3))
+        ax1.scatter(x_0[:, 0], x_0[:, 1], alpha=0.5, s=5)
+        ax1.set_title("t = " + str(0))
+        ax2.scatter(x_Td2[:, 0], x_Td2[:, 1], alpha=0.5, s=5)
+        ax2.set_title("t = " + str(int(self.timesteps/2)))
+        ax3.scatter(x_T[:, 0], x_T[:, 1], alpha=0.5, s=5)
+        ax3.set_title("t = " + str(self.timesteps))
+        plt.show()
     
 if __name__ == "__main__":
-    x = torch.randn((10, 2))
-    model = ConditionalModel(n_steps=40)
-    mu, sigma = model(x, torch.tensor([39]))
-    print("Input shape: ", x.shape)
-    print("Output shapes (mu, sigma): ", mu.shape, sigma.shape)
-
     diffusion = Diffusion()
-    plt.plot(diffusion.betas, label="betas")
-    plt.plot(diffusion.alphas, label="alphas")
-    plt.plot(diffusion.alphas_cumprod, label="alphas_cumprod")
-    plt.legend()
-    plt.show()
+
+    x_0 = utils.make_dataset()
+
+    diffusion.plot_forward(x_0)
+

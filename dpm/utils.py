@@ -4,7 +4,7 @@ from sklearn.datasets import make_swiss_roll
 
 import torch
 
-def make_dataset(n_samples=300, noise=0.3):
+def make_dataset(n_samples=1000, noise=0.3):
     """
     Recreates the swiss roll dataset used in the first diffusion paper
     (https://arxiv.org/abs/1503.03585)
@@ -29,6 +29,7 @@ def schedule_variances(timesteps=40):
     betas = torch.arange(1, timesteps+1, dtype=torch.float32)
     betas = 1./(timesteps - betas + 1)
     return betas
+
 
 if __name__ == "__main__":
     betas = schedule_variances()

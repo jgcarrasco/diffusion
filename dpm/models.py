@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 import utils
+from utils import extract
 
 
 class ConditionalLinear(nn.Module):
@@ -39,7 +40,7 @@ class ConditionalModel(nn.Module):
         return mu, sigma
 
 
-class Diffusion:
+class Diffusion(nn.Module):
     def __init__(self, model=None, timesteps=40):
         """
         Constructor for the diffusion class. The variance schedule of the
@@ -55,6 +56,8 @@ class Diffusion:
         timesteps : int
             Number of timesteps for the diffusion process.
         """
+        super(Diffusion, self).__init__()
+
         # Precompute betas and other values
         self.betas = utils.schedule_variances(timesteps=timesteps)
         self.alphas = 1 - self.betas
@@ -62,6 +65,7 @@ class Diffusion:
         self.alphas_cumprod_prev = torch.cat(
             [torch.tensor([1]).float(), 
              self.alphas_cumprod[:-1]], 0)
+        self.sqrt_alphas_cumprod_prev = torch.sqrt(self.alphas_cumprod_prev)
         self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
         self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1 - self.alphas_cumprod)
 
@@ -91,15 +95,75 @@ class Diffusion:
         forward diffusion process.
         """
         z = torch.randn_like(x_0)
-        return x_0 * self.sqrt_alphas_cumprod[t].unsqueeze(1) \
-             + z * self.sqrt_one_minus_alphas_cumprod[t].unsqueeze(1)
+        return x_0 * extract(self.sqrt_alphas_cumprod, t, x_0) \
+             + z * extract(self.sqrt_one_minus_alphas_cumprod, t, x_0)
+
+    def sample_backward(self, x_t, t):
+        """
+        Implementation of the learned reverse diffusion process,
+        p(x_t-1 | x_t)
+        """
+        mu, sigma = self.model(x_t, t)
+        z = torch.rand_like(x_t)
+        return mu + torch.sqrt(sigma)*z
+    
+    def generate(self, n_samples=100, return_all=False):
+        """
+        Generates `n_samples` by sampling from a gaussian distribution and
+        iteratively applying the learned reverse diffusion process.
+        """
+        X_t = []
+        device = next(self.model.parameters()).device
+        # Sample from a gaussian
+        x_t = torch.randn((n_samples, 2)).to(device)
+        X_t.append(x_t.unsqueeze(0))
+        for t in range(self.timesteps-1, -1, -1):
+            x_t = self.sample_backward(x_t, torch.tensor([t]).to(device))
+            X_t.append(x_t.unsqueeze(0))
+        
+        X_t = torch.cat(X_t, dim=0)
+        
+        return X_t if return_all else x_t
+
 
     def compute_mu_posterior(self, x_0, x_t, t):
         """
         Compute the mean of the gaussian q(x_t-1 | x_t, x_0). This will be used
         when computing the loss.
         """
-        pass
+        a = (extract(self.sqrt_alphas_cumprod_prev, t, x_0) \
+          *  extract(self.betas, t, x_0)) \
+          / (1. - extract(self.alphas_cumprod, t, x_0))
+        b = (extract(self.sqrt_alphas_cumprod, t, x_0) \
+            * (1. - extract(self.alphas_cumprod_prev, t, x_0))) \
+            / (1. - extract(self.alphas_cumprod, t, x_0))
+        return a*x_0 + b*x_t
+    
+    def compute_loss(self, x_0, t):
+        """
+        Compute the loss terms for a single batch.
+        There is a loss term for each timestep. For each observation of the 
+        batch, a timestep is specified.
+
+        Parameters
+        ----------
+        x_0 : `torch.Tensor`
+            Tensor of shape (n_batch, 2) containing the samples
+        t : `torch.Tensor`
+            Tensor of shape (n_batch,) containing the indices for each sample
+        
+        Returns
+        -------
+        Final loss term consisting on the mean of the independent loss terms.
+        """
+        x_t = self.sample_forward(x_0, t)
+        mu_posterior = self.compute_mu_posterior(x_0, x_t, t)
+        mu, sigma = self.model(x_t, t)
+        loss = 0.5 * torch.log(sigma) \
+             + 0.5 * (mu_posterior - mu).square()/sigma
+        loss = loss.mean()
+        return loss
+
             
     #---------------
     # VISUALIZATION
@@ -129,6 +193,7 @@ if __name__ == "__main__":
     diffusion = Diffusion()
 
     x_0 = utils.make_dataset()
-
-    diffusion.plot_forward(x_0)
-
+    t = torch.tensor([20])
+    
+    loss = diffusion.compute_loss(x_0, t)
+    print(loss)

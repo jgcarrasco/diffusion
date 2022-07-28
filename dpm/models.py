@@ -1,3 +1,5 @@
+import math
+import numpy as np
 import matplotlib.pyplot as plt
 
 import torch
@@ -38,7 +40,94 @@ class ConditionalModel(nn.Module):
         # Pass sigma through a sigmoid layer in order to restrict it to [0, 1]
         sigma = self.sigmoid(sigma)
         return mu, sigma
+    
+class RBF(nn.Module):
+    """
+    RBF layer implemented in PyTorch. This layer differs from a simple Linear
+    layer as it uses a radial basis function as an activation function, i.e.
+    the output of the layer only depends on the distance of the input and a 
+    learned center. 
 
+    More formally, each output of the RBF will have the shape
+
+    o_i(x) = phi(||x - c_i||) 
+
+    where phi is a radial basis activation function (typically a gaussian) and 
+    c_i is a learnable parameter for each neuron in the hidden layer. If a 
+    gaussian is used as a radial basis function, then:
+
+    o_i(x) = exp(-beta_i * ||x - c_i||)
+
+    where b_i are also learnable parameters. As for the distance, the 
+    Euclidean norm will be used.
+
+    TO DO: Implement normalization
+    """
+    def __init__(self, in_features, out_features):
+        """
+        Constructor for the RBF layer
+
+        Parameters
+        ----------
+        in_features: int
+            Number of input features
+        out_features: int
+            Desired number of output features
+        """
+        super(RBF, self).__init__()
+
+        self.in_features = in_features
+        self.out_features = out_features
+        self.centers = nn.parameter.Parameter(
+            torch.empty((out_features, in_features))
+            )
+        self.betas = nn.parameter.Parameter(
+            torch.ones(out_features)
+        )
+        
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.centers, a=math.sqrt(5))
+
+    def forward(self, x):
+        """
+        Forward pass for the RBF layer
+
+        Parameters
+        ----------
+        x : `torch.Tensor`
+            Input tensor of shape (N, `self.in_features`)
+        
+        Returns
+        -------
+        `torch.Tensor` of shape (N, `out_features`)
+        """
+        size = (x.size(0), self.out_features, self.in_features) # (N, out, in)
+        # Broadcast the shape of x to (N, out, in)
+        x = x.unsqueeze(1).expand(size)
+        # The same for self.centers
+        c = self.centers.unsqueeze(0).expand(size)
+        distances = (x - c).square().sum(-1).sqrt() # (N, out)
+        b = self.betas.unsqueeze(0).expand(distances.size())
+        # Apply gaussian activation function
+        return torch.exp(-b*distances)
+
+
+class RBFModel(nn.Module):
+    def __init__(self, timesteps=40):
+        super(RBFModel, self).__init__()
+
+        self.timesteps = timesteps
+        self.rbf = RBF(2, 16)
+        self.temporal_layer = ConditionalLinear(16, 4, timesteps)
+        
+    def forward(self, x, t):
+        x = self.rbf(x)
+        x = self.temporal_layer(x, t)
+        mu, sigma = torch.split(x, 2, dim=-1)
+        return mu, sigma
+        
 
 class Diffusion(nn.Module):
     def __init__(self, model=None, timesteps=40):
@@ -68,12 +157,14 @@ class Diffusion(nn.Module):
         self.sqrt_alphas_cumprod_prev = torch.sqrt(self.alphas_cumprod_prev)
         self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
         self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1 - self.alphas_cumprod)
+        # Cumulative covariance from the entire forward trajectory
+        self.beta_full_trajectory = 1. - self.alphas.log().sum().exp()
 
         self.timesteps = timesteps
         if model:
             self.model = model
         else:
-            self.model = ConditionalModel(n_steps=timesteps)
+            self.model = RBFModel(timesteps=timesteps)
     
     def sample_forward(self, x_0, t):
         """
@@ -105,7 +196,7 @@ class Diffusion(nn.Module):
         """
         mu, sigma = self.model(x_t, t)
         z = torch.rand_like(x_t)
-        return mu + torch.sqrt(sigma)*z
+        return mu + sigma*z
     
     def generate(self, n_samples=100, return_all=False):
         """
@@ -126,18 +217,25 @@ class Diffusion(nn.Module):
         return X_t if return_all else x_t
 
 
-    def compute_mu_posterior(self, x_0, x_t, t):
+    def compute_mu_sigma_posterior(self, x_0, x_t, t):
         """
-        Compute the mean of the gaussian q(x_t-1 | x_t, x_0). This will be used
-        when computing the loss.
+        Compute the mean and stdev of the gaussian q(x_t-1 | x_t, x_0). 
+        This will be used when computing the loss.
         """
+        # Compute the mean
         a = (extract(self.sqrt_alphas_cumprod_prev, t, x_0) \
           *  extract(self.betas, t, x_0)) \
           / (1. - extract(self.alphas_cumprod, t, x_0))
         b = (extract(self.sqrt_alphas_cumprod, t, x_0) \
             * (1. - extract(self.alphas_cumprod_prev, t, x_0))) \
             / (1. - extract(self.alphas_cumprod, t, x_0))
-        return a*x_0 + b*x_t
+        mu = a*x_0 + b*x_t
+        # Compute the variance
+        sigma2 = (1. - extract(self.alphas_cumprod_prev, t, x_0)) \
+            / (1. - extract(self.alphas_cumprod, t, x_0)) * extract(self.betas, t, x_0)
+        sigma = torch.sqrt(sigma2)
+
+        return mu, sigma
     
     def compute_loss(self, x_0, t):
         """
@@ -157,12 +255,21 @@ class Diffusion(nn.Module):
         Final loss term consisting on the mean of the independent loss terms.
         """
         x_t = self.sample_forward(x_0, t)
-        mu_posterior = self.compute_mu_posterior(x_0, x_t, t)
         mu, sigma = self.model(x_t, t)
-        loss = 0.5 * torch.log(sigma) \
-             + 0.5 * (mu_posterior - mu).square()/sigma
-        loss = loss.mean()
-        return loss
+        mu_posterior, sigma_posterior = self.compute_mu_sigma_posterior(x_0, x_t, t)
+        # # KL divergence between q(x_t-1 | x_t, x_0) and p(x_t-1 | x_t)
+        # # As both are gaussians, it can be solved in closed form
+        # KL = (torch.log(sigma) - torch.log(sigma_posterior)
+        # + (sigma_posterior**2 + (mu_posterior - mu)**2)/(2*sigma**2) - 0.5)
+        # # Conditional entropies H_q(x^1|x^0) and H_q(x^T|x^0)
+        # H_startpoint = 0.5*self.betas[0].log() \
+        #     + 0.5 * (1 + np.log(2*torch.pi))
+        # H_endpoint = 0.5*self.beta_full_trajectory.log() \
+        #     + 0.5 * (1 + np.log(2*torch.pi))
+        # # Differential entropy H_p(X_T)
+        # H_prior = 0.5 * (1. + np.log(2*torch.pi))
+        loss = sigma.log() + (sigma_posterior**2 + (mu_posterior-mu)**2) / (2*sigma**2)
+        return loss.mean()
 
             
     #---------------
@@ -190,10 +297,8 @@ class Diffusion(nn.Module):
         plt.show()
     
 if __name__ == "__main__":
-    diffusion = Diffusion()
-
-    x_0 = utils.make_dataset()
-    t = torch.tensor([20])
-    
-    loss = diffusion.compute_loss(x_0, t)
-    print(loss)
+    x = torch.randn((10, 2))
+    t = torch.randint(1, 10, size=(10,))
+    rbf = RBFModel()
+    mu, sigma = rbf(x, t)
+    print(mu.shape, sigma.shape)
